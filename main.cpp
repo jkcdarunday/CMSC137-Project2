@@ -6,14 +6,18 @@
 #include <QDirIterator>
 #include <QMimeDatabase>
 
+// Object that handles HTTP requests sent through a QTcpSocket
+
+// It serves files contained in a QHash<QString, QPair< QString, QByteArray > >
+// where the first QString is the filepath, the second QString is the mimetype
+// and the QByteArray is its content.
 class HTTPHandler : public QThread
 {
-//    Q_OBJECT
 public:
     HTTPHandler(QTcpSocket *c, QHash<QString, QPair< QString, QByteArray > > *files){
         this->c = c;
 
-        command.setPattern("^(GET|PUT|HEAD|POST|CONENCT) (.*) (HTTP/[0-9]\\.[0-9])");
+        command.setPattern("^(GET|PUT|HEAD|POST|CONNECT) (.*) (HTTP/[0-9]\\.[0-9])");
         header.setPattern("^([^:]+):\\s*(.*)");
 
         this->files = files;
