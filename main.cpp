@@ -1,4 +1,4 @@
- #include <QCoreApplication>
+#include <QCoreApplication>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QThread>
@@ -18,7 +18,7 @@ public:
 
         this->files = files;
 
-        qInfo() << "New connection from" << c->peerAddress().toString();
+        qDebug() << "New connection from" << c->peerAddress().toString();
     }
 
     QHash<QString,QString> parseParams(QString query){
@@ -79,9 +79,9 @@ public:
                         QString reply = command.cap(3) + " 200 OK\r\n";
                         c->write(reply.toUtf8());
 
-                        qInfo() << "Valid request from" << c->peerAddress().toString() << ":" << cmd;
+                        qDebug() << "Valid request from" << c->peerAddress().toString() << ":" << cmd;
                     } else {
-                        qInfo() << "Invalid request from" << c->peerAddress().toString();
+                        qDebug() << "Invalid request from" << c->peerAddress().toString();
                         c->deleteLater();
                         continue;
                     }
@@ -180,21 +180,50 @@ int main(int argc, char *argv[])
             if(!file.open(QIODevice::ReadOnly)) continue;
             if(fn.startsWith("./")) fn = fn.remove(0,1);
 
-            (*files)[fn].second = file.readAll();
-            (*files)[fn].first = mimedb.mimeTypeForFileNameAndData(fn,(*files)[fn].second).name();
+            (*files)[fn].second = file.readAll(); // Store file to hashmap
+            (*files)[fn].first = mimedb.mimeTypeForFileNameAndData(fn,(*files)[fn].second).name(); // Resolve mimetype from filename and content
         }
     }
 
-    qInfo("Successfully read all files.");
+    qDebug("Successfully read all files.");
 
+    // Start Server
     QTcpServer *s = new QTcpServer();
-    s->listen(QHostAddress::Any, 8080);
-    qInfo("Server started");
 
+    // Connect newConnection() signal to a lambda function that creates an HTTPHandler object to handle the connection
     s->connect(s, &QTcpServer::newConnection, [=](){
         HTTPHandler *h = new HTTPHandler(s->nextPendingConnection(), files);
         h->start();
     });
+
+    // Try port specified in argument
+    if(arguments.length() == 1){
+        int portnum = a.arguments()[1].toInt();
+        qDebug() << "Starting server at port" << portnum;
+        if(s->listen(QHostAddress::Any, portnum)) qDebug("Success.");
+        else  qDebug("Failed.");
+    }
+
+    // Try port 80
+    if(!s->isListening()){
+        qDebug() << "Starting server at port 80";
+        if(s->listen(QHostAddress::Any, 80)) qDebug("Success.");
+        else  qDebug("Failed.");
+    }
+
+    // Try port 8080
+    if(!s->isListening()){
+        qDebug() << "Starting server at port 8080";
+        if(s->listen(QHostAddress::Any, 8080)) qDebug("Success.");
+        else  qDebug("Failed.");
+    }
+
+    if(s->isListening())
+        qDebug("Server started");
+    else {
+        qDebug() << "Server start failed. EXITING.";
+        a.exit(-1); // Quit on failure
+    }
 
     return a.exec();
 }
