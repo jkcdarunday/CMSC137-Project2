@@ -222,7 +222,7 @@ int main(int argc, char *argv[])
     });
 
     // Try port specified in argument
-    if(arguments.length() == 1){
+    if(argc==2){
         int portnum = a.arguments()[1].toInt();
         qDebug() << "Starting server at port" << portnum;
         if(s->listen(QHostAddress::Any, portnum)) qDebug("Success.");
