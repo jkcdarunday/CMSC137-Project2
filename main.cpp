@@ -1,3 +1,23 @@
+/***
+ *
+ * Saitama: A simple HTTP server that serves files under the current directory's www folder
+ * Copyright (c) 2015 Jan Keith c. Darunday (2012-10053)
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or (at
+ * your option) any later version.
+
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * General Public License for more details.
+
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
+ ***/
+
 #include <QCoreApplication>
 #include <QTcpServer>
 #include <QTcpSocket>
@@ -91,7 +111,7 @@ public:
                     }
 
                     if(RequestPath == "/"){ // Root directory requested
-                        QString htmlHeader = "<!DOCTYPE html>\n<html>\n\t<head>\n\t\t<title>Sakuradite Server</title>\n\t</head>\n\t<body>\n";
+                        QString htmlHeader = "<!DOCTYPE html>\n<html>\n\t<head>\n\t\t<title>Saitama HTTP Server</title>\n\t</head>\n\t<body>\n";
                         QString htmlFooter = "\n\t</body>\n</html>";
 
                         QString infoTable = "<h2>Request Info and Headers:</h2><table>\r\n"; // Will contain request info
@@ -136,6 +156,7 @@ public:
                     }
 
                     c->write(QString("Content-Length: " + QString::number(content.length()) + "\r\n").toUtf8());
+                    c->write(QString("Server: Saitama\r\n").toUtf8());
                     c->write(QString("\r\n").toUtf8());
 
                     c->write(content);
