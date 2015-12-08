@@ -25,6 +25,10 @@
 #include <QDebug>
 #include <QDirIterator>
 #include <QMimeDatabase>
+#include <qtimer.h>
+#include <QTime>
+
+int ccount = 0;
 
 // Object that handles HTTP requests sent through a QTcpSocket
 
@@ -34,15 +38,30 @@
 class HTTPHandler : public QThread
 {
 public:
-    HTTPHandler(QTcpSocket *c, QHash<QString, QPair< QString, QByteArray > > *files){
-        this->c = c;
+    HTTPHandler(int socketDescriptor, QHash<QString, QPair< QString, QByteArray > > *files):
+        socketDescriptor(socketDescriptor)
+    {
+        this->c = new QTcpSocket();
+
+        c->moveToThread(this);
+
+        connect(c, &QTcpSocket::aboutToClose,
+                [=](){
+            ccount--;
+            qDebug() << "Closing.." << this->c->peerAddress();
+            this->exit();
+            this->c->deleteLater();
+        }
+        );
+        connect(c, &QTcpSocket::disconnected,
+                c, &QTcpSocket::close);
 
         command.setPattern("^(GET|PUT|HEAD|POST|CONNECT) (.*) (HTTP/[0-9]\\.[0-9])");
         header.setPattern("^([^:]+):\\s*(.*)");
 
         this->files = files;
 
-        qDebug() << "New connection from" << c->peerAddress().toString();
+        this->start();
     }
 
     QHash<QString,QString> parseParams(QString query){
@@ -57,7 +76,23 @@ public:
 
     void run() Q_DECL_OVERRIDE {
         QStringList lines;
+        if(!c->setSocketDescriptor(socketDescriptor)){
+
+            qDebug() << c->error();
+            return;
+        }
+        qDebug() << "New connection from" << c->peerAddress().toString();
+        ccount++;
+
+        QTime timer;
+        timer.start();
+
         while(c->state() == QTcpSocket::ConnectedState){
+            c->waitForReadyRead(100);
+            if(timer.elapsed() >5000){
+                this->c->close();
+                break;
+            }
             while(c->canReadLine()){
                 QString line = c->readLine();
                 if(line.trimmed() == "") // End of HTTP Request
@@ -97,15 +132,17 @@ public:
                         }
 
                         // Close connection afterwards if not HTTP/1.1
-                        if(HTTPVersion != "HTTP/1.1") c->deleteLater();
 
                         // Reply OK
                         QString reply = command.cap(3) + " 200 OK\r\n";
                         c->write(reply.toUtf8());
 
+                        timer.restart();
+
                         qDebug() << "Valid request from" << c->peerAddress().toString() << ":" << cmd;
                     } else {
                         qDebug() << "Invalid request from" << c->peerAddress().toString();
+                        c->close();
                         c->deleteLater();
                         continue;
                     }
@@ -164,6 +201,10 @@ public:
                     c->flush();
 
                     lines.clear();
+
+                    if(ccount>100 || HTTPVersion != "HTTP/1.1"){
+                        c->close();
+                    }
                 }
                 else // New HTTP Request line
                 {
@@ -176,6 +217,24 @@ private:
     QRegExp command;
     QRegExp header;
     QTcpSocket *c;
+    int socketDescriptor;
+    QHash<QString, QPair< QString, QByteArray > > *files;
+};
+
+class HTTPServer : public QTcpServer
+{
+public:
+    HTTPServer(QHash<QString, QPair< QString, QByteArray > > *files, QObject *parent=0) : QTcpServer(parent)
+    {
+        this->files = files;
+    }
+
+    void incomingConnection(qintptr handle){
+
+        HTTPHandler *h = new HTTPHandler(handle, files);
+        h->start();
+    }
+
     QHash<QString, QPair< QString, QByteArray > > *files;
 };
 
@@ -213,33 +272,29 @@ int main(int argc, char *argv[])
     qDebug("Successfully read all files.");
 
     // Start Server
-    QTcpServer *s = new QTcpServer();
+    HTTPServer *s = new HTTPServer(files);
 
-    // Connect newConnection() signal to a lambda function that creates an HTTPHandler object to handle the connection
-    s->connect(s, &QTcpServer::newConnection, [=](){
-        HTTPHandler *h = new HTTPHandler(s->nextPendingConnection(), files);
-        h->start();
-    });
+    //     Connect newConnection() signal to a lambda function that creates an HTTPHandler object to handle the connection
 
     // Try port specified in argument
     if(argc==2){
         int portnum = a.arguments()[1].toInt();
         qDebug() << "Starting server at port" << portnum;
-        if(s->listen(QHostAddress::Any, portnum)) qDebug("Success.");
+        if(s->listen(QHostAddress::AnyIPv4, portnum)) qDebug("Success.");
         else  qDebug("Failed.");
     }
 
     // Try port 80
     if(!s->isListening()){
         qDebug() << "Starting server at port 80";
-        if(s->listen(QHostAddress::Any, 80)) qDebug("Success.");
+        if(s->listen(QHostAddress::AnyIPv4, 80)) qDebug("Success.");
         else  qDebug("Failed.");
     }
 
     // Try port 8080
     if(!s->isListening()){
         qDebug() << "Starting server at port 8080";
-        if(s->listen(QHostAddress::Any, 8080)) qDebug("Success.");
+        if(s->listen(QHostAddress::AnyIPv4, 8080)) qDebug("Success.");
         else  qDebug("Failed.");
     }
 
